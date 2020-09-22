@@ -1,0 +1,216 @@
+---
+title: 'Coursera: Regression Models - Course Project'
+author: "Chun-Li Hou"
+date: "07 September, 2020"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if(!require("pacman")) install.packages("pacman")
+pacman::p_load(knitr, dplyr, ggplot2, GGally, caret, car)
+options(digits = 3)
+theme_set(theme_minimal())
+set.seed(123)
+```
+
+## Executive Summary
+
+The 1974 Motor Trend US magazine dataset (mtcars) is used to evaluate the effect of transmission design on mpg (miles per gallon) in automobiles. Simply put we are asking the questions as following: 
+
+- **Is an automatic or manual transmission better for mpg?**
+- **How is the mpg difference between automatic and manual transmissions?**
+
+## Dataset Description
+
+The dataset consists of a dataframe with 32 observations (nrow) and 11 variables (nol).
+
+- mpg: Miles per US gallon
+- cyl: Number of cylinders
+- disp: Displacement (cubic inches)
+- hp: Gross horsepower
+- drat: Rear axle ratio
+- wt: Weight (lb / 1000)
+- qsec: 1 / 4 mile time
+- vs: V/S
+- am: Transmission (0 = automatic, 1 = manual)
+- gear: Number of forward gears
+- carb: Number of carburetors
+
+\newpage
+
+## Loading & Processing & Exploring
+
+```{r}
+# load
+data("mtcars")
+
+# transform
+mtcars$cyl = factor(mtcars$cyl)
+mtcars$vs = factor(mtcars$vs)
+mtcars$gear = factor(mtcars$gear)
+mtcars$carb = factor(mtcars$carb)
+mtcars$am = factor(mtcars$am, labels = c("Automatic", "Manual"))
+
+# print
+str(mtcars)
+```
+
+```{r}
+featurePlot(x = mtcars[, -c("mpg")])
+```
+
+
+In this section, we deep dive into our data and explore various relationships between variables of interest.
+
+Initially, we plot the relationship bewteen all the variables of the dataset (Figure.1 in the appendix). From the plot, we notice that most of the variables in the dataset seem to have correlation with mpg. So, we will use linear model to identify and qunatify that.
+
+Since we are interested in the effects of car transmission type on mpg. we plot boxplot of the variable mpg whem am is automatic or manual (Figure.2 in the appendix). This plot clearly depicts an increase in the mpg when transmission is manual.
+
+\newpage
+
+## Regression Analysis & Inference
+
+```{r}
+# fit.best
+init.mod = lm(mpg ~ ., data = mtcars)
+best.mod = step(init.mod, direction = "both", trace = FALSE)
+
+# print
+summary(best.mod)
+```
+
+The best model obtained from the above computations consists of the variables as cyl, wt, hp and am. From the best model, we observe that the adjusted r squared value is 0.84. Thus, we can conclude that more than **84%** of the variability is explained by the best model.
+
+```{r}
+# fit.base
+base.mod = lm(mpg ~ am, data = mtcars)
+
+# print
+summary(base.mod)
+```
+
+As using only the indicated variable (am) on mpg, the adjusted r squared value is 0.34. Thus, we can conclude that more than **34%** of the variability is explained by the base model.
+
+```{r}
+anova(base.mod, best.mod)
+```
+
+Based on p-value < 0.05, we reject H0 and conclude that the equations are not equivalent, which means that the variables of cyl, hp, and wt do contirbute to the accuracy of the model.
+
+```{r}
+t.test(mpg ~ am, data = mtcars)
+```
+
+We also perform a t-test assuming that the transmission data has a normal distribution and we clearly see that the manual and automatic tramsmissions are significantly different based on p-value < 0.05.
+
+\newpage
+
+## Assumption Checking
+
+```{r, fig.height = 5, fig.width = 5, fig.align = "center"}
+par(mfrow = c(2, 2))
+plot(best.mod)
+```
+
+From the above plots, we can check the following assumptions needing to be established for a regression model.
+
+- **Residuals vs Fitted plot**: dataset seems to be ramdomly scattered on the plot and verify the independence condition.
+- **Normal Q-Q plot**: the points that mostly fall on the line indicate that the residuals are normally distributed.
+- **Scale-Location plot**: it consists of points scattered in a constant band pattern, which indicates homoscedastic.
+- **Redisuals vs Leverage plot**: the point as an outlier shows its level in influence and leverage. We compute some regression diagonostics of our model to find out these possible outliers as below. Thus, we find out that **Toyota Corona** is the point as high influence and high leverage. This may need to take a look on the observation in detail to see whether it has a record error or not, or try to take it off from the model to see whether the conclusion change, or just report results with and without the point.
+
+```{r}
+influence = dfbetas(best.mod)
+tail(sort(influence[, 6]), 3)
+# sum((abs(dfbetas(best.mod)))>1) # default accepted influencial point
+```
+
+The influence point has extreme value of Y, so it has the power to move the line no matter about the leverage. It can be identified by the cook's distance.
+
+```{r}
+leverage = hatvalues(best.mod)
+tail(sort(leverage), 3)
+```
+
+The leverage point has extreme value of X, so it has a greater possible ability to move the line based on the distance from the line or the overall pattern that is influence.
+
+```{r}
+data.frame(vif(best.mod)) %>% arrange(GVIF) %>% select(GVIF) %>% t()
+```
+
+The generalized variance inflation factor (GVIF) is a measure of collinearity. The bigger number, the less independency, means higher colinearity. Thus, am is comparatively the best independent variable to mpg.
+
+## Conclusion
+
+1. Based on the analysis result, we can conclude the following:
+
+- mpg decreases by **2.2** unit as comparing with the car in 8 to 4 number of cylinders, and decreases by **3.0** unit as comparing with the car in 6 to 4 number of cylinders (when other variables are fixed) (Figure.3 in the appendix).
+- mpg decreases negligibly by **0.03** unit as increasing 1 unit of hp (when other variables are fixed) (Figure.4 in the appendix). Or, by rescaling, mpg decreases by **3.2** unit as increasing 100 unit of hp.
+- mpg decreases by **2.5** unit as increasing 1 unit of wt, which means increasing 1000 lb in weigth of car (when other variables are fixed) (Figure.5 in the appendix).
+- mpg increases by **1.8** unit as comparing with the car in manual to in automatic transmission (when other variables are fixed) (Figure.2 in the appendix).
+
+2. Above set of analysis yields the inference that **manual transmission is better than automatic transmission** with a more 1.8 miles per gallon as fixed other variables.
+
+3. Additionally, type of transmission is the most independent variable to mpg in the model. However, it seems that wt, hp, and cyl are more statistically significant when determining mpg.
+
+\newpage
+
+## Appendix
+
+##### Figure.1 Overview of Dataset
+
+```{r, message = FALSE, fig.align = "center"}
+g = ggpairs(mtcars,
+            lower = list(continuous = wrap("smooth", method = "lm"))) +
+    labs(caption = "Figure.1")
+g
+```
+
+\newpage
+
+##### Figure.2 Boxplot of MPG vs Transmission
+
+```{r, fig.align = "center"}
+g[1, 9] + 
+    labs(title = "Boxplot of MPG vs Transmission",
+         x = "Transmission\n(0 = Automatic, 1 = Manual)", 
+         y = "Miles per Gallon",
+         caption = "Figure.2")
+```
+
+\newpage
+
+##### Figure.3 Boxplot of Mileage by Cylinder
+
+```{r, fig.align = "center"}
+g[1, 2] + 
+    labs(title = "Boxplot of Mileage by Cylinder",
+         x = "Number of Cylinders", 
+         y = "Miles per Gallon",
+         caption = "Figure.3")
+```
+
+\newpage
+
+##### Figure.4 Regression Plot of Mileage by Gross Horsepower
+
+```{r, fig.align = "center"}
+g[4, 1] + 
+    labs(title = "Regression Plot of Mileage by Gross Horsepower",
+         y = "Gross Horsepower", 
+         x = "Miles per Gallon",
+         caption = "Figure.4")
+```
+
+\newpage
+
+##### Figure.5 Regression Plot of Mileage by Weight
+
+```{r, fig.align = "center"}
+g[6, 1] + 
+    labs(title = "Regression Plot of Mileage by Weight",
+         y = "Weight (lb / 1000)", 
+         x = "Miles per Gallon",
+         caption = "Figure.5")
+```
+
