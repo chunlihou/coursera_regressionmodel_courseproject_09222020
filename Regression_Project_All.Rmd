@@ -1,0 +1,211 @@
+---
+title: "Regression Model Protocol"
+author: "Chun-Li Hou"
+date: "`r Sys.Date()`"
+---
+
+**Regression modeling processes are theroying, data collection, data cleaning, training set & test set, variable selection (feature selection), advancing by the goodness of fit, checking finalised model assumptions, evaluating with test set (no underfit nor overfit), causation & prediction with the finalised model.**
+
+```{r, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if(!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, ggplot2, GGally, caret, car, lmtest)
+options(digits = 3)
+theme_set(theme_minimal())
+set.seed(123)
+```
+
+## 1. Loading & Preprocessing & Exploring
+
+```{r}
+# load
+data("mtcars")
+
+# partition dataset (train/test)
+
+# encode categorical data
+mtcars$cyl = factor(mtcars$cyl)
+mtcars$vs = factor(mtcars$vs)
+mtcars$gear = factor(mtcars$gear)
+mtcars$carb = factor(mtcars$carb)
+mtcars$am = factor(mtcars$am, labels = c("Automatic", "Manual"))
+
+# check others
+# 1. missing data
+# 2. near zero variance
+# 3. mostly NA variable
+# 4. identification variable
+# 5. correlation matrix (PCA)
+```
+
+## 2. Model building
+
+```{r}
+# best fit
+init.mod = lm(mpg ~ ., data = mtcars)
+best.mod = step(init.mod, direction = "both", trace = FALSE)
+
+# compare other model
+# 1. anova(init.mod, best.mod)
+# 2. t.test(mpg ~ am, data = mtcars)
+```
+## 3. Assumption checking
+
+### 1. Outlier
+
+```{r}
+# influence point
+plot(best.mod, which = 4)
+abline(h = 4/nrow(mtcars), lty = 2, col = "red")
+influence = c("Chrysler Imperial", "Toyota Corolla", "Toyota Corona")
+
+# leverage point
+best.mod %>% 
+  hatvalues() %>% 
+  sort() %>% 
+  tail(3) %>% 
+  names()
+leverage = c("Toyota Corona", "Lincoln Continental", "Maserati Bora")
+
+# outlier
+data.frame(influence, leverage)
+```
+
+- Problem:
+  + Outlier will mpact model directly
+  + Influence must be outlier, which has extreme value of y so it has the power to move the line
+  + Leverage might be outlier, which has extreme value of x so it has possible ability to move the line
+
+- Identification:
+  + Influence by cook's distance with a rule of thumb of 4/n
+  + Leverage by the r function
+
+- Solution:
+  + Influence must be removed from the dataset
+  + Leverage by comparing the model with it and without it
+
+### 2. Collinearity
+
+```{r}
+# rule of thumb
+best.mod %>% 
+  vif() %>% 
+  as.data.frame() %>% 
+  mutate("Threshold" = 10^(1/2)) %>% 
+  mutate("Collinearity" = ifelse(("GVIF^(1/(2*Df))" > "Threshold"),
+                                 "Yes", "No"))
+```
+
+- Problem:
+  + Var more > SE more > CI more > p-value more > non-significant > coefficient close to 0
+  + Hard to explain the dedication for corelated variables
+  + The more the VIF/VGIF increases, the less reliable the regression model is
+
+- Identification:
+  + The rule of thumb for VIF is 10; for GVIF is 3.16
+  + If less than threshold, we conclude that there are no collinearity among the indenpendent variables (x) in the model
+  + If more than threshold, we conclude that there are collinearity among the indenpendent variables (x) in the model
+
+- Solution:
+  + PCA to combine correlated variables together
+  + Remove one of the correlated variables
+  + Increase data size
+
+### 3. Heteroscedasticity
+
+```{r}
+# plot
+plot(best.mod, which = 1)
+
+# test
+bptest(mpg ~ cyl + hp + wt + am, data = mtcars) # similar white test
+```
+
+- Problem:
+  + Estimation inefficient
+  + SE error > CI wrong
+  
+- Identification:
+  + Plot seeing for equal spreading of data along the line
+  + Test for statisitc inference (H0: Homoscedasticity; H1: Heteroscedasticity)
+
+- Solution:
+  + Dependent variable (y) transformation (log/sqrt)
+  + Adjust to robust SE
+  + Segment data to make each model
+
+### 4. Normality
+
+```{r}
+# qq plot
+plot(best.mod, which = 2)
+
+# residual hist
+hist(best.mod$residuals, probability = T)
+lines(density(best.mod$residuals), lwd = 2, col = "red") # sample distribution
+lines(density(best.mod$residuals, adjust = 1.5), lwd = 2, lty = 2, col = "blue") # kernel distribution
+
+# check
+mean(best.mod$residuals) # close to 0
+```
+
+- Problem:
+  + Obey assumption (error distribution is normal; error mean is 0)
+  
+- Identification:
+  + See QQ plot with the dots all on the line
+  + See histogram with an approximate normal distribution
+
+- Solution:
+  + Dependent variable (y) transformation (log/sqrt)
+  + Relate to the outlier problem
+
+### 5. Autocorrelation
+
+```{r}
+# plot
+acf(best.mod$residuals, type = "partial", main = "")
+```
+
+- Problem:
+  + Obey assumption (error covariance is 0) (no serial correlation)
+  
+- Identification:
+  + See acf plot with the spike out of the blue line
+
+- Solution:
+  + Use time-series process, such as differencing
+
+## 4. Model refining & Analysis & Inference
+
+```{r}
+# remove outlier
+# rownames(mtcars) # 17, 20, 21
+mtcars.1 = mtcars[-c(17, 20, 21), ]
+# rownames(mtcars.1)
+
+# best fit with no outlier
+init.mod.1 = lm(mpg ~ ., data = mtcars.1)
+best.mod.1 = step(init.mod.1, direction = "both", trace = FALSE)
+```
+
+```{r, fig.height = 5, fig.width = 5}
+# check again assumption
+par(mfrow = c(3, 2)); plot(best.mod.1, which = c(1:6))
+```
+
+## 5. Analysis & Inference
+
+```{r}
+summary(best.mod.1)
+```
+
+- Multiple R-squared: 0.898  
+The 89% of the dependent variable (mpg; y) can be explained by the model's inputs (the independent variables; x).
+
+- Significant coefficient in numeric variable: hp, wt  
+As increasing x by 1 unit, the y would increase/decrease by the coefficient unit.
+
+- Significant coefficient in dummy/indicator/nominal variable: cyl6  
+As for the x in A to B, the difference in y is the coefficient unit.  
+As for the x with A comparing with B, the y would increase/decrease by the coefficient unit.

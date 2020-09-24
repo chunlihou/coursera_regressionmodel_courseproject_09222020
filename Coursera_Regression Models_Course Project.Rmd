@@ -55,11 +55,6 @@ mtcars$am = factor(mtcars$am, labels = c("Automatic", "Manual"))
 str(mtcars)
 ```
 
-```{r}
-featurePlot(x = mtcars[, -c("mpg")])
-```
-
-
 In this section, we deep dive into our data and explore various relationships between variables of interest.
 
 Initially, we plot the relationship bewteen all the variables of the dataset (Figure.1 in the appendix). From the plot, we notice that most of the variables in the dataset seem to have correlation with mpg. So, we will use linear model to identify and qunatify that.
